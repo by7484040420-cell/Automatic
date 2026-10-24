@@ -1,0 +1,75 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install Capacitor
+        run: npm install @capacitor/core @capacitor/android @capacitor/cli @capgo/inappbrowser --no-save --legacy-peer-deps
+
+      - name: Build website
+        run: npm run build
+
+      - name: Write Capacitor config
+        run: |
+          cat > capacitor.config.json << 'EOF'
+          {
+            "appId": "com.sarkariai.app",
+            "appName": "Sarkari AI",
+            "webDir": "public",
+            "server": {
+              "url": "https://sarkari-ai.onrender.com",
+              "cleartext": true,
+              "androidScheme": "https"
+            }
+          }
+          EOF
+          mkdir -p public
+          test -f public/index.html || echo '<html><body>Loading…</body></html>' > public/index.html
+          cat capacitor.config.json
+
+      - name: Add Android platform
+        run: test -d android || npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarkari-AI-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
